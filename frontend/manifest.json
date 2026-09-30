@@ -1,0 +1,14 @@
+{
+  "name": "Lead Caller",
+  "short_name": "LeadCaller",
+  "description": "Find B2B leads and track telecalling on your phone.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F8F9FA",
+  "theme_color": "#1E88E5",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
