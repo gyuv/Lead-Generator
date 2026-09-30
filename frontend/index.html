@@ -117,6 +117,11 @@
               <h2 class="font-semibold leading-snug break-words" x-text="lead.name"></h2>
               <p class="text-sm text-slate-500 mt-0.5" x-text="lead.phone || 'No phone found'"></p>
               <a x-show="lead.email" :href="'mailto:' + lead.email" class="text-xs text-primary break-all" x-text="lead.email"></a>
+              <p x-show="lead.address" class="text-xs text-slate-500 mt-0.5 break-words" x-text="lead.address"></p>
+              <p x-show="lead.confidence" class="text-xs mt-1">
+                <span :class="lead.confidence >= 80 ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'" class="px-2 py-0.5 rounded-full font-medium" x-text="lead.confidence + '% verified'"></span>
+                <span class="text-slate-400 ml-1" x-text="lead.source"></span>
+              </p>
             </div>
             <span class="shrink-0 text-xs bg-blue-50 text-primary px-2 py-1 rounded-full"><i class="fa-solid fa-location-dot mr-1"></i><span x-text="lead.city"></span></span>
           </div>
@@ -316,6 +321,7 @@
               id: (crypto.randomUUID && crypto.randomUUID()) || String(Date.now() + Math.random()),
               name: d.name, phone: d.phone || "", email: d.email || "", website: d.website || "",
               city: d.city || this.location, tel_link: d.tel_link || "", wa_link: d.wa_link || "",
+              address: d.address || "", source: d.source || "", confidence: d.confidence || 0,
               status: "Pending", notes: "", added_at: new Date().toISOString(), _open: false,
             });
             added++;
@@ -344,7 +350,7 @@
       },
 
       exportCsv() {
-        const cols = ["name", "phone", "email", "website", "city", "status", "notes", "wa_link", "tel_link", "added_at"];
+        const cols = ["name", "phone", "email", "website", "city", "address", "source", "confidence", "status", "notes", "wa_link", "tel_link", "added_at"];
         const head = ["Business Name", "Phone", "Email", "Website", "City", "Call Status", "Notes", "WhatsApp Link", "Call Link", "Added At"];
         const esc = v => {
           let s = String(v ?? "");

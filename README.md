@@ -57,6 +57,12 @@ frontend/  PWA (HTML + Tailwind + Alpine.js)  →  GitHub Pages or Vercel (free)
 
 `GET /api/leads?industry=CA%20Firms&location=Chennai&limit=10`
 
+Optional: `sources=indiamart,tradeindia,government,websites` (default: all) and `min_confidence=60`.
+Every lead is verified before it is returned: the phone must come from structured data, a click-to-call
+link or a "Phone/Mobile" label and pass Indian numbering checks; the page must mention the city and the
+industry; articles, "top 10" lists, job/news pages and multi-seller listings are rejected. Each lead has
+`confidence` (0-100), `source` and `address`. Tests: `cd backend && python -m pytest -q`.
+
 ```json
 [{"id": "...", "name": "ABC & Co", "phone": "+91 98765 43210", "email": "a@abc.in",
   "website": "https://abc.in", "city": "Chennai",
