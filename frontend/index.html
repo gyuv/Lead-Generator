@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#1E88E5">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="LeadCaller">
+  <title>Lead Caller</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: { canvas: "#F8F9FA", primary: "#1E88E5", wa: "#25D366" },
+          fontFamily: { sans: ["-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "sans-serif"] }
+        }
+      }
+    };
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.14.1/dist/cdn.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    html, body { -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
+    .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+    .safe-top { padding-top: env(safe-area-inset-top); }
+    select { -webkit-appearance: none; appearance: none; }
+  </style>
+</head>
+<body class="bg-canvas text-slate-800 font-sans antialiased">
+<div x-data="app()" x-init="init()" x-cloak class="min-h-screen flex flex-col max-w-md mx-auto">
+
+  <!-- Header -->
+  <header class="safe-top sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-slate-100">
+    <div class="px-4 h-14 flex items-center justify-between">
+      <h1 class="text-lg font-semibold" x-text="titles[tab]"></h1>
+      <span class="text-xs text-slate-500" x-show="tab === 'prospects'" x-text="filtered.length + ' of ' + leads.length"></span>
+    </div>
+  </header>
+
+  <!-- Toast -->
+  <div x-show="toast" x-transition.opacity class="fixed top-16 inset-x-0 z-30 flex justify-center px-4 pointer-events-none">
+    <div class="bg-slate-900 text-white text-sm px-4 py-2 rounded-full shadow-lg" x-text="toast"></div>
+  </div>
+
+  <main class="flex-1 px-4 pt-4 pb-28">
+
+    <!-- SEARCH TAB -->
+    <section x-show="tab === 'search'" class="space-y-4">
+      <form @submit.prevent="search()" class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 space-y-4">
+        <label class="block">
+          <span class="text-sm font-medium text-slate-600">Profession / Industry</span>
+          <div class="mt-1 flex items-center gap-3 bg-canvas rounded-xl px-3 border border-slate-200 focus-within:border-primary">
+            <i class="fa-solid fa-briefcase text-slate-400"></i>
+            <input x-model="industry" required minlength="2" class="w-full bg-transparent py-3 text-base outline-none" placeholder="e.g. CA Firms">
+          </div>
+        </label>
+        <label class="block">
+          <span class="text-sm font-medium text-slate-600">City / Location</span>
+          <div class="mt-1 flex items-center gap-3 bg-canvas rounded-xl px-3 border border-slate-200 focus-within:border-primary">
+            <i class="fa-solid fa-location-dot text-slate-400"></i>
+            <input x-model="location" required minlength="2" class="w-full bg-transparent py-3 text-base outline-none" placeholder="e.g. Chennai">
+          </div>
+        </label>
+        <label class="block">
+          <span class="text-sm font-medium text-slate-600">Number of leads: <b x-text="limit"></b></span>
+          <input type="range" min="5" max="50" step="5" x-model.number="limit" class="w-full mt-2 accent-primary">
+        </label>
+        <button type="submit" :disabled="loading"
+          class="w-full bg-primary text-white font-semibold py-3.5 rounded-xl shadow-md active:scale-[0.98] transition disabled:opacity-60 flex items-center justify-center gap-2">
+          <i class="fa-solid" :class="loading ? 'fa-spinner fa-spin' : 'fa-magnifying-glass'"></i>
+          <span x-text="loading ? 'Searching… (up to a minute)' : 'Find Leads'"></span>
+        </button>
+      </form>
+
+      <details class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+        <summary class="text-sm font-medium text-slate-600 cursor-pointer"><i class="fa-solid fa-gear mr-2"></i>Backend server</summary>
+        <input x-model="apiBase" @change="saveSettings()" class="mt-3 w-full bg-canvas rounded-xl px-3 py-3 border border-slate-200 text-sm outline-none focus:border-primary" placeholder="Leave empty to use this server">
+        <p class="text-xs text-slate-500 mt-2">Free Render servers sleep when idle — the first search can take ~50 s.</p>
+      </details>
+    </section>
+
+    <!-- PROSPECTS TAB -->
+    <section x-show="tab === 'prospects'" class="space-y-3">
+      <div class="flex gap-2">
+        <div class="flex-1 flex items-center gap-2 bg-white rounded-xl px-3 border border-slate-200">
+          <i class="fa-solid fa-magnifying-glass text-slate-400 text-sm"></i>
+          <input x-model="query" class="w-full py-2.5 text-sm outline-none" placeholder="Search name or city">
+        </div>
+        <div class="relative">
+          <select x-model="statusFilter" class="h-full bg-white border border-slate-200 rounded-xl pl-3 pr-8 text-sm">
+            <option value="">All</option>
+            <template x-for="s in statuses"><option :value="s" x-text="s"></option></template>
+          </select>
+          <i class="fa-solid fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none"></i>
+        </div>
+      </div>
+
+      <template x-if="leads.length === 0">
+        <div class="text-center py-16 text-slate-500">
+          <i class="fa-regular fa-address-book text-4xl mb-3 text-slate-300"></i>
+          <p>No prospects yet.</p>
+          <button @click="tab = 'search'" class="mt-4 text-primary font-medium">Find leads</button>
+        </div>
+      </template>
+
+      <template x-for="lead in filtered" :key="lead.id">
+        <article class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+          <div class="flex items-start justify-between gap-2">
+            <div class="min-w-0">
+              <h2 class="font-semibold leading-snug break-words" x-text="lead.name"></h2>
+              <p class="text-sm text-slate-500 mt-0.5" x-text="lead.phone || 'No phone found'"></p>
+              <a x-show="lead.email" :href="'mailto:' + lead.email" class="text-xs text-primary break-all" x-text="lead.email"></a>
+            </div>
+            <span class="shrink-0 text-xs bg-blue-50 text-primary px-2 py-1 rounded-full"><i class="fa-solid fa-location-dot mr-1"></i><span x-text="lead.city"></span></span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 mt-3">
+            <a :href="lead.tel_link || null" :class="lead.tel_link ? 'bg-primary' : 'bg-slate-300 pointer-events-none'"
+               class="text-white text-sm font-semibold py-2.5 rounded-xl flex items-center justify-center gap-2 active:scale-[0.97] transition">
+              <i class="fa-solid fa-phone"></i> Call Now
+            </a>
+            <a :href="lead.wa_link || null" target="_blank" rel="noopener" :class="lead.wa_link ? 'bg-wa' : 'bg-slate-300 pointer-events-none'"
+               class="text-white text-sm font-semibold py-2.5 rounded-xl flex items-center justify-center gap-2 active:scale-[0.97] transition">
+              <i class="fa-brands fa-whatsapp text-base"></i> WhatsApp
+            </a>
+          </div>
+
+          <div class="flex items-center gap-2 mt-3">
+            <div class="relative flex-1">
+              <select x-model="lead.status" @change="save()" :class="statusColor(lead.status)"
+                      class="w-full text-sm font-medium rounded-xl pl-3 pr-8 py-2.5 border">
+                <template x-for="s in statuses"><option :value="s" x-text="s" :selected="s === lead.status"></option></template>
+              </select>
+              <i class="fa-solid fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-xs pointer-events-none"></i>
+            </div>
+            <a x-show="lead.website" :href="lead.website" target="_blank" rel="noopener" class="w-10 h-10 rounded-xl border border-slate-200 flex items-center justify-center text-slate-500" aria-label="Website"><i class="fa-solid fa-globe"></i></a>
+            <button @click="lead._open = !lead._open" class="w-10 h-10 rounded-xl border border-slate-200 flex items-center justify-center text-slate-500 relative" aria-label="Notes">
+              <i class="fa-regular fa-note-sticky"></i>
+              <span x-show="lead.notes" class="absolute top-1.5 right-1.5 w-2 h-2 bg-primary rounded-full"></span>
+            </button>
+            <button @click="remove(lead)" class="w-10 h-10 rounded-xl border border-slate-200 flex items-center justify-center text-slate-400" aria-label="Delete"><i class="fa-regular fa-trash-can"></i></button>
+          </div>
+
+          <div x-show="lead._open" x-collapse.duration.200ms class="mt-3">
+            <textarea x-model="lead.notes" @input.debounce.400ms="save()" rows="3"
+                      class="w-full bg-canvas rounded-xl p-3 text-sm border border-slate-200 outline-none focus:border-primary"
+                      placeholder="Call notes…"></textarea>
+          </div>
+        </article>
+      </template>
+    </section>
+
+    <!-- ANALYTICS TAB -->
+    <section x-show="tab === 'analytics'" class="space-y-4">
+      <div class="grid grid-cols-2 gap-3">
+        <template x-for="card in statCards" :key="card.label">
+          <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center" :class="card.bg"><i class="fa-solid" :class="[card.icon, card.fg]"></i></div>
+            <p class="text-3xl font-bold mt-3" x-text="card.value"></p>
+            <p class="text-sm text-slate-500" x-text="card.label"></p>
+          </div>
+        </template>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+        <h3 class="font-semibold mb-3">Status breakdown</h3>
+        <template x-for="s in statuses" :key="s">
+          <div class="mb-3">
+            <div class="flex justify-between text-sm mb-1"><span x-text="s"></span><span class="text-slate-500" x-text="count(s)"></span></div>
+            <div class="h-2 bg-slate-100 rounded-full overflow-hidden">
+              <div class="h-full rounded-full bg-primary transition-all" :style="`width:${leads.length ? count(s) / leads.length * 100 : 0}%`"></div>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <button @click="exportCsv()" :disabled="!leads.length"
+        class="w-full bg-white border border-primary text-primary font-semibold py-3.5 rounded-xl active:scale-[0.98] transition disabled:opacity-50 flex items-center justify-center gap-2">
+        <i class="fa-solid fa-file-csv"></i> Export to CSV
+      </button>
+      <button @click="clearAll()" :disabled="!leads.length"
+        class="w-full text-red-500 text-sm font-medium py-2 disabled:opacity-40">Clear all prospects</button>
+    </section>
+  </main>
+
+  <!-- Bottom Tab Bar -->
+  <nav class="safe-bottom fixed bottom-0 inset-x-0 z-20 bg-white border-t border-slate-200">
+    <div class="max-w-md mx-auto grid grid-cols-3">
+      <template x-for="t in tabs" :key="t.id">
+        <button @click="tab = t.id; window.scrollTo(0, 0)" class="flex flex-col items-center justify-center h-16 gap-1 relative"
+                :class="tab === t.id ? 'text-primary' : 'text-slate-400'">
+          <i class="fa-solid text-lg" :class="t.icon"></i>
+          <span class="text-[11px] font-medium" x-text="t.label"></span>
+          <span x-show="t.id === 'prospects' && leads.length" class="absolute top-2 left-1/2 ml-2 bg-primary text-white text-[10px] rounded-full px-1.5 min-w-[18px]" x-text="leads.length"></span>
+        </button>
+      </template>
+    </div>
+  </nav>
+</div>
+
+<script>
+  const STORAGE_KEY = "leadcaller.leads.v1";
+  const SETTINGS_KEY = "leadcaller.settings.v1";
+  // Empty = same server that serves this page (the Render service). Set a full URL only if the API is hosted elsewhere.
+  const DEFAULT_API = "";
+
+  function readJson(key, fallback) {
+    try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
+  }
+  function writeJson(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { console.warn("Storage failed", e); }
+  }
+
+  function app() {
+    return {
+      tab: "search",
+      tabs: [
+        { id: "search", label: "Search", icon: "fa-magnifying-glass" },
+        { id: "prospects", label: "Prospects", icon: "fa-address-book" },
+        { id: "analytics", label: "Analytics", icon: "fa-chart-simple" },
+      ],
+      titles: { search: "Find Leads", prospects: "Prospects", analytics: "Analytics" },
+      statuses: ["Pending", "Interested", "Call Back", "Not Interested", "Closed"],
+      industry: "CA Firms",
+      location: "Chennai",
+      limit: 15,
+      apiBase: DEFAULT_API,
+      leads: [],
+      query: "",
+      statusFilter: "",
+      loading: false,
+      toast: "",
+
+      init() {
+        this.leads = readJson(STORAGE_KEY, []).map(l => ({ ...l, _open: false }));
+        const s = readJson(SETTINGS_KEY, {});
+        if (s.apiBase) this.apiBase = s.apiBase;
+        if (s.industry) this.industry = s.industry;
+        if (s.location) this.location = s.location;
+        if (this.leads.length) this.tab = "prospects";
+        if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+      },
+
+      get filtered() {
+        const q = this.query.trim().toLowerCase();
+        return this.leads.filter(l =>
+          (!this.statusFilter || l.status === this.statusFilter) &&
+          (!q || l.name.toLowerCase().includes(q) || (l.city || "").toLowerCase().includes(q))
+        );
+      },
+
+      get statCards() {
+        return [
+          { label: "Total", value: this.leads.length, icon: "fa-users", bg: "bg-blue-50", fg: "text-primary" },
+          { label: "Interested", value: this.count("Interested"), icon: "fa-thumbs-up", bg: "bg-green-50", fg: "text-green-600" },
+          { label: "Closed", value: this.count("Closed"), icon: "fa-handshake", bg: "bg-purple-50", fg: "text-purple-600" },
+          { label: "Call Backs", value: this.count("Call Back"), icon: "fa-clock-rotate-left", bg: "bg-amber-50", fg: "text-amber-600" },
+        ];
+      },
+
+      count(status) { return this.leads.filter(l => l.status === status).length; },
+
+      statusColor(s) {
+        return {
+          "Pending": "bg-slate-50 border-slate-200 text-slate-700",
+          "Interested": "bg-green-50 border-green-200 text-green-700",
+          "Call Back": "bg-amber-50 border-amber-200 text-amber-700",
+          "Not Interested": "bg-red-50 border-red-200 text-red-700",
+          "Closed": "bg-purple-50 border-purple-200 text-purple-700",
+        }[s] || "";
+      },
+
+      save() {
+        writeJson(STORAGE_KEY, this.leads.map(({ _open, ...rest }) => rest));
+      },
+
+      saveSettings() {
+        this.apiBase = this.apiBase.trim().replace(/\/+$/, "");
+        writeJson(SETTINGS_KEY, { apiBase: this.apiBase, industry: this.industry, location: this.location });
+      },
+
+      notify(msg) {
+        this.toast = msg;
+        clearTimeout(this._t);
+        this._t = setTimeout(() => (this.toast = ""), 2500);
+      },
+
+      async search() {
+        if (!navigator.onLine) return this.notify("You are offline");
+        this.loading = true;
+        this.saveSettings();
+        const url = `${this.apiBase}/api/leads?` + new URLSearchParams({
+          industry: this.industry.trim(), location: this.location.trim(), limit: this.limit,
+        });
+        try {
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => ctrl.abort(), 120000);
+          const res = await fetch(url, { signal: ctrl.signal });
+          clearTimeout(timer);
+          if (!res.ok) throw new Error(`Server error ${res.status}`);
+          const data = await res.json();
+          const existing = new Set(this.leads.map(l => l.name.trim().toLowerCase()));
+          let added = 0;
+          for (const d of data) {
+            const key = (d.name || "").trim().toLowerCase();
+            if (!key || existing.has(key)) continue;
+            existing.add(key);
+            this.leads.unshift({
+              id: (crypto.randomUUID && crypto.randomUUID()) || String(Date.now() + Math.random()),
+              name: d.name, phone: d.phone || "", email: d.email || "", website: d.website || "",
+              city: d.city || this.location, tel_link: d.tel_link || "", wa_link: d.wa_link || "",
+              status: "Pending", notes: "", added_at: new Date().toISOString(), _open: false,
+            });
+            added++;
+          }
+          this.save();
+          this.notify(added ? `${added} new prospects added` : "No new prospects found");
+          if (added) this.tab = "prospects";
+        } catch (e) {
+          this.notify(e.name === "AbortError" ? "Request timed out, try again" : "Search failed: " + e.message);
+        } finally {
+          this.loading = false;
+        }
+      },
+
+      remove(lead) {
+        if (!confirm(`Delete "${lead.name}"?`)) return;
+        this.leads = this.leads.filter(l => l.id !== lead.id);
+        this.save();
+      },
+
+      clearAll() {
+        if (!confirm("Delete all saved prospects from this phone?")) return;
+        this.leads = [];
+        this.save();
+        this.notify("All prospects cleared");
+      },
+
+      exportCsv() {
+        const cols = ["name", "phone", "email", "website", "city", "status", "notes", "wa_link", "tel_link", "added_at"];
+        const head = ["Business Name", "Phone", "Email", "Website", "City", "Call Status", "Notes", "WhatsApp Link", "Call Link", "Added At"];
+        const esc = v => {
+          let s = String(v ?? "");
+          if (/^[=+\-@]/.test(s) && !/^\+?[\d\s\-()]+$/.test(s)) s = "'" + s; // guard against spreadsheet formula injection
+          return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+        };
+        const rows = [head.join(","), ...this.leads.map(l => cols.map(c => esc(l[c])).join(","))];
+        const blob = new Blob(["﻿" + rows.join("\r\n")], { type: "text/csv;charset=utf-8" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        this.notify("CSV exported");
+      },
+    };
+  }
+</script>
+</body>
+</html>
