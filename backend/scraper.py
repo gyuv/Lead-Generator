@@ -3,7 +3,7 @@
 import base64
 import re
 import time
-from urllib.parse import parse_qs, quote_plus, unquote, urlparse
+from urllib.parse import parse_qs, quote_plus, unquote, urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -31,7 +31,53 @@ BLOCKED_DOMAINS = (
     "duckduckgo.com",
     "bing.com",
     "microsoft.com",
+    # directories, aggregators, review and news sites: they list many businesses, not one lead
+    "yellowpages.in",
+    "tradeindia.com",
+    "exportersindia.com",
+    "clutch.co",
+    "goodfirms.co",
+    "glassdoor.com",
+    "glassdoor.co.in",
+    "ambitionbox.com",
+    "naukri.com",
+    "indeed.com",
+    "quora.com",
+    "reddit.com",
+    "zaubacorp.com",
+    "tofler.in",
+    "crunchbase.com",
+    "yelp.com",
+    "tripadvisor.in",
+    "tripadvisor.com",
+    "practo.com",
+    "urbanpro.com",
+    "grotal.com",
+    "asklaila.com",
+    "cybo.com",
+    "nearbuy.com",
+    "magicpin.in",
+    "zomato.com",
+    "swiggy.com",
+    "google.com",
+    "maps.google.com",
+    "medium.com",
+    "blogspot.com",
+    "wordpress.com",
+    "timesofindia.indiatimes.com",
+    "thehindu.com",
+    "economictimes.indiatimes.com",
+    "icai.org",
+    "gov.in",
 )
+
+# Titles like "Top 10 CA Firms in Chennai" or "List of ..." are articles/directories, not a business.
+LISTICLE_PATTERN = re.compile(
+    r"^\s*(top|best|list of|\d+\s+(best|top))\b|\b(top|best)\s+\d+\b|\bnear me\b|\bdirectory\b|\blistings?\b|\breviews?\b",
+    re.IGNORECASE,
+)
+
+CONTACT_PATHS = ("/contact", "/contact-us", "/contactus")
 
 EMAIL_JUNK = (".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", "bootstrap", "example", "sentry", "wixpress", "domain.com")
 
@@ -60,6 +106,21 @@ def clean_whatsapp_number(phone_str):
     return ""
 
 
+def _is_real_phone(phone_str):
+    """Reject digit runs that match the pattern but are clearly not phone numbers."""
+    digits = re.sub(r"\D", "", str(phone_str))
+    if digits.startswith("91") and len(digits) == 12:
+        digits = digits[2:]
+    digits = digits.lstrip("0")
+    if not 9 <= len(digits) <= 10:
+        return False
+    if len(set(digits)) <= 2:  # 9999999999, 1010101010
+        return False
+    if digits in "01234567890123456789" or digits in "98765432109876543210":  # sequential
+        return False
+    return True
+
+
 def _clean_dial_number(phone_str):
     digits = re.sub(r"\D", "", str(phone_str))
     if len(digits) == 12 and digits.startswith("91"):
@@ -67,41 +128,72 @@ def _clean_dial_number(phone_str):
     return digits
 
 
-def extract_contact_info(url):
-    """Fetch a website and return (phones, emails) lists found in its HTML."""
-    phones, emails = [], []
+def _scan_page(url, phones, emails):
+    """Collect phones/emails from one page into the given lists; return (soup, text) or (None, "")."""
     try:
         resp = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
-        if resp.status_code != 200:
-            return phones, emails
-        soup = BeautifulSoup(resp.text, "html.parser")
-
-        for a in soup.select("a[href^='tel:']"):
-            phones.append(a["href"][4:].strip())
-        for a in soup.select("a[href^='mailto:']"):
-            emails.append(a["href"][7:].split("?")[0].strip())
-
-        text = soup.get_text(" ", strip=True)
-        phones.extend(m.group(0).strip() for m in PHONE_PATTERN.finditer(text))
-        emails.extend(EMAIL_PATTERN.findall(resp.text))
     except requests.RequestException:
-        return [], []
+        return None, ""
+    if resp.status_code != 200 or "html" not in resp.headers.get("Content-Type", "html"):
+        return None, ""
+    soup = BeautifulSoup(resp.text, "html.parser")
+    for a in soup.select("a[href^='tel:']"):
+        phones.append(unquote(a["href"][4:]).strip())
+    for a in soup.select("a[href^='mailto:']"):
+        emails.append(unquote(a["href"][7:]).split("?")[0].strip())
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
+    text = soup.get_text(" ", strip=True)
+    phones.extend(m.group(0).strip() for m in PHONE_PATTERN.finditer(text))
+    emails.extend(EMAIL_PATTERN.findall(text))
+    return soup, text
+
+
+def _site_name(soup):
+    if soup is None:
+        return ""
+    meta = soup.find("meta", property="og:site_name")
+    if meta and meta.get("content"):
+        return meta["content"].strip()
+    return ""
+
+
+def extract_contact_info(url):
+    """Fetch a website (home + contact page) and return (phones, emails, page_text, site_name)."""
+    phones, emails = [], []
+    soup, text = _scan_page(url, phones, emails)
+    if soup is None:
+        return [], [], "", ""
+    site_name = _site_name(soup)
+
+    parsed = urlparse(url)
+    base = f"{parsed.scheme}://{parsed.netloc}"
+    contact_url = ""
+    for a in soup.find_all("a", href=True):
+        if "contact" in a["href"].lower() or "contact" in a.get_text(" ", strip=True).lower():
+            contact_url = urljoin(url, a["href"])
+            break
+    candidates = [contact_url] if contact_url else [base + p for p in CONTACT_PATHS[:1]]
+    for c in candidates:
+        if urlparse(c).netloc == parsed.netloc and c.rstrip("/") != url.rstrip("/"):
+            _, contact_text = _scan_page(c, phones, emails)
+            text += " " + contact_text
 
     seen, clean_phones = set(), []
     for p in phones:
         digits = re.sub(r"\D", "", p)
-        if 10 <= len(digits) <= 13 and digits not in seen:
+        if 10 <= len(digits) <= 13 and digits not in seen and _is_real_phone(p):
             seen.add(digits)
             clean_phones.append(p)
 
     clean_emails = []
     for e in emails:
         e_low = e.lower().strip(".")
-        if any(j in e_low for j in EMAIL_JUNK):
+        if any(j in e_low for j in EMAIL_JUNK) or not EMAIL_PATTERN.fullmatch(e_low):
             continue
         if e_low not in clean_emails:
             clean_emails.append(e_low)
-    return clean_phones, clean_emails
+    return clean_phones, clean_emails, text, site_name
 
 
 def _resolve_ddg_link(href):
@@ -195,12 +287,25 @@ def _clean_business_name(title):
 
 
 def _build_lead(name, website, snippet, location, lead_id):
-    phones = [m.group(0) for m in PHONE_PATTERN.finditer(snippet)]
-    emails = [e for e in EMAIL_PATTERN.findall(snippet) if not any(j in e.lower() for j in EMAIL_JUNK)]
+    """Return a lead verified against the business's own website, or None if it can't be verified."""
+    site_phones, site_emails, site_text, site_name = extract_contact_info(website)
+    if not site_text:
+        return None  # site unreachable: can't confirm it's a real business
 
-    site_phones, site_emails = extract_contact_info(website)
-    phones = phones + [p for p in site_phones if p not in phones]
-    emails = emails + [e for e in site_emails if e not in emails]
+    # Must actually be in the requested city, otherwise it's an unrelated/unknown lead.
+    if location.lower() not in (site_text + " " + snippet).lower():
+        return None
+
+    phones = site_phones + [
+        m.group(0) for m in PHONE_PATTERN.finditer(snippet)
+        if _is_real_phone(m.group(0)) and m.group(0) not in site_phones
+    ]
+    emails = site_emails
+    if not phones and not emails:
+        return None  # no way to contact them: not a usable lead
+
+    if site_name and not LISTICLE_PATTERN.search(site_name):
+        name = site_name
 
     wa_num = ""
     for p in phones:
@@ -226,7 +331,7 @@ def _build_lead(name, website, snippet, location, lead_id):
 
 def search_public_leads(industry, location, limit=10):
     """Search DuckDuckGo (falling back to Bing) and build a list of lead dictionaries."""
-    query = f"{industry} in {location} contact details"
+    query = f"{industry} in {location} phone"
     leads, seen_names, seen_domains = [], set(), set()
 
     for _engine, fetch_page, max_pages in SEARCH_ENGINES:
@@ -245,11 +350,13 @@ def search_public_leads(industry, location, limit=10):
                 domain = urlparse(website).netloc.lower().removeprefix("www.")
                 name = _clean_business_name(title)
                 key = name.lower()
-                if not name or key in seen_names or domain in seen_domains:
+                if not name or key in seen_names or domain in seen_domains or LISTICLE_PATTERN.search(title):
                     continue
                 seen_names.add(key)
                 seen_domains.add(domain)
-                leads.append(_build_lead(name, website, snippet, location, len(leads) + 1))
+                lead = _build_lead(name, website, snippet, location, len(leads) + 1)
+                if lead:
+                    leads.append(lead)
 
             time.sleep(1)
 
