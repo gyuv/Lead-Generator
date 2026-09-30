@@ -38,7 +38,7 @@ Streamlit Community Cloud apps sleep after a period without visitors. For an alw
 
 ## Notes
 
-- Results come from DuckDuckGo's public HTML page and the businesses' own websites; quality varies and DuckDuckGo may rate-limit heavy use — wait a minute and retry.
+- Results come from DuckDuckGo's public HTML page, falling back to Bing automatically when DuckDuckGo is blocked or runs out of results, plus the businesses' own websites. Quality varies; if both engines rate-limit you, wait a minute and retry.
 - Leads live in the browser session only. Export to CSV/Excel before closing the tab.
 - Respect DND/TRAI telemarketing rules and each site's terms when calling or messaging leads.
 
