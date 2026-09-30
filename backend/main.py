@@ -1,10 +1,12 @@
 """FastAPI service exposing the public lead scraper for the mobile PWA."""
 
 import os
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from scraper import search_public_leads
 
@@ -19,7 +21,7 @@ app.add_middleware(
 )
 
 
-@app.get("/")
+@app.get("/healthz")
 def health():
     return {"status": "ok"}
 
@@ -48,3 +50,9 @@ async def get_leads(
         }
         for lead in leads
     ]
+
+
+# Serve the mobile PWA from the same service so one always-on Render instance hosts everything.
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+if FRONTEND_DIR.is_dir():
+    app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

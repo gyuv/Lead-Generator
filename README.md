@@ -32,9 +32,9 @@ git push -u origin main
 4. (Optional) Set the custom subdomain to `webtel-lead-generator`.
 5. Click **Deploy**. Your app goes live at `https://<subdomain>.streamlit.app`.
 
-## Keep-alive workflow
+## 24/7 hosting
 
-`.github/workflows/keep_alive.yml` pings `https://webtel-lead-generator.streamlit.app` daily at 00:00 UTC. If your URL differs, edit it in that file. You can also run it manually from the **Actions** tab.
+Streamlit Community Cloud apps sleep after a period without visitors. For an always-on deployment, use the mobile PWA version on Render (below).
 
 ## Notes
 
@@ -69,32 +69,32 @@ frontend/  PWA (HTML + Tailwind + Alpine.js)  →  GitHub Pages or Vercel (free)
 cd backend
 pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
-# in another terminal
-cd frontend && python -m http.server 5500
 ```
 
-Open http://localhost:5500. Under **Search → Backend server**, enter `http://localhost:8000`.
+Open http://localhost:8000. The same server hosts the phone app and the API (`/api/leads`, health check `/healthz`).
 
-## Deploy the backend on Render (free)
+## Deploy 24/7 on Render (free, no card)
 
-1. Push this repo to GitHub.
-2. On https://render.com choose **New → Blueprint** and select the repo. `render.yaml` sets everything up (root `backend`, Python 3.11, `uvicorn main:app`).
-   Or choose **New → Web Service** with root directory `backend`, build command `pip install -r requirements.txt` and start command `uvicorn main:app --host 0.0.0.0 --port $PORT`.
-3. Copy the URL, e.g. `https://lead-generator-api.onrender.com`.
-4. Optional: set `ALLOWED_ORIGINS` to your frontend URL to lock down CORS.
+1. On https://render.com sign in with GitHub and choose **New → Blueprint**.
+2. Select this repo and branch. `render.yaml` creates one free web service named `lead-generator`. Click **Apply**.
+3. After the build finishes, open `https://<your-service>.onrender.com`. That is your app.
 
-Free Render services sleep after 15 minutes idle, so the first search can take about 50 seconds.
+### Keep it awake (important)
 
-## Deploy the frontend
+Free Render services sleep after 15 minutes without traffic. A free uptime monitor stops that:
 
-- **GitHub Pages:** go to repo **Settings → Pages**, choose to deploy from a branch, and pick branch `main` with folder `/ (root)`. Open `https://<user>.github.io/<repo>/frontend/`.
-- **Vercel:** choose **Add New → Project**, import the repo and set the root directory to `frontend` (no build step).
+1. Sign up at https://uptimerobot.com (or https://cron-job.org).
+2. Add an **HTTP(s)** monitor for `https://<your-service>.onrender.com/healthz` with a **5-minute** interval.
 
-Then set the backend URL in the app (**Search → Backend server**). You can also change `DEFAULT_API` in `frontend/index.html` so the URL is always pre-filled.
+Render's 750 free hours a month are shared by all free services in your account, which is enough for **one** service running 24/7. Don't run a second free service (for example the Streamlit app) on the same account, or the hours will run out before the month ends and both will be suspended.
+
+### Optional: host the frontend separately
+
+The Render service already serves the app. If you also want it on Vercel, Netlify or GitHub Pages, deploy the `frontend` folder and enter your Render URL in the app under **Search → Backend server**.
 
 ## Install on your phone
 
-- **Android (Chrome):** menu ⋮ → **Add to Home screen / Install app**.
-- **iPhone (Safari):** Share → **Add to Home Screen**.
+- **Android (Chrome):** open your Render URL, then menu ⋮ → **Add to Home screen / Install app**.
+- **iPhone (Safari):** open your Render URL, then Share → **Add to Home Screen**.
 
 Leads live only on that phone and browser. Export CSV regularly as a backup.

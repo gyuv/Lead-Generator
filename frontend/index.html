@@ -81,7 +81,7 @@
 
       <details class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
         <summary class="text-sm font-medium text-slate-600 cursor-pointer"><i class="fa-solid fa-gear mr-2"></i>Backend server</summary>
-        <input x-model="apiBase" @change="saveSettings()" class="mt-3 w-full bg-canvas rounded-xl px-3 py-3 border border-slate-200 text-sm outline-none focus:border-primary" placeholder="https://your-api.onrender.com">
+        <input x-model="apiBase" @change="saveSettings()" class="mt-3 w-full bg-canvas rounded-xl px-3 py-3 border border-slate-200 text-sm outline-none focus:border-primary" placeholder="Leave empty to use this server">
         <p class="text-xs text-slate-500 mt-2">Free Render servers sleep when idle — the first search can take ~50 s.</p>
       </details>
     </section>
@@ -208,7 +208,8 @@
 <script>
   const STORAGE_KEY = "leadcaller.leads.v1";
   const SETTINGS_KEY = "leadcaller.settings.v1";
-  const DEFAULT_API = "https://lead-generator-api.onrender.com";
+  // Empty = same server that serves this page (the Render service). Set a full URL only if the API is hosted elsewhere.
+  const DEFAULT_API = "";
 
   function readJson(key, fallback) {
     try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
