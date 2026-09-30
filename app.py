@@ -24,7 +24,7 @@ with st.sidebar:
     location = st.text_input("City / Location", value="Chennai")
     limit = st.slider("Number of Leads to Find", min_value=5, max_value=50, value=15)
 
-    if st.button("🚀 Find Leads", use_container_width=True):
+    if st.button("🚀 Find Leads", width="stretch"):
         if not industry.strip() or not location.strip():
             st.warning("Please enter both industry and location.")
         else:
@@ -43,7 +43,7 @@ with st.sidebar:
             else:
                 st.error("No leads found. Try a different query or retry in a minute.")
 
-    if st.button("🧹 Clear List", use_container_width=True):
+    if st.button("🧹 Clear List", width="stretch"):
         st.session_state["lead_data"] = pd.DataFrame(columns=COLUMNS)
         st.rerun()
 
@@ -73,7 +73,7 @@ edited = st.data_editor(
     filtered,
     key="lead_editor",
     hide_index=True,
-    use_container_width=True,
+    width="stretch",
     disabled=["Lead ID"],
     column_config={
         "Lead ID": st.column_config.NumberColumn("Lead ID", width="small"),
@@ -100,7 +100,7 @@ c1.download_button(
     data=export_df.to_csv(index=False).encode("utf-8"),
     file_name="leads.csv",
     mime="text/csv",
-    use_container_width=True,
+    width="stretch",
 )
 
 excel_buffer = io.BytesIO()
@@ -111,5 +111,5 @@ c2.download_button(
     data=excel_buffer.getvalue(),
     file_name="leads.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    use_container_width=True,
+    width="stretch",
 )
